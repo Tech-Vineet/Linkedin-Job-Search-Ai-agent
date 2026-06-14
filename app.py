@@ -3,9 +3,18 @@ from typing import Any
 from fastapi import Body, FastAPI, HTTPException
 
 from apify_integration import extract_posts
-from database import claim, init_db
+from database import (
+    claim,
+    create_application_draft,
+    get_pending_application_draft,
+    init_db,
+    mark_application_sent,
+    mark_application_skipped,
+)
+from email_drafter import extract_emails, generate_application_email
+from email_sender import send_application_email
 from openai_filter import analyze_post
-from telegram_bot import send_message
+from telegram_bot import answer_callback, send_application_draft, send_message
 
 app = FastAPI()
 
@@ -33,6 +42,7 @@ async def webhook(payload: Any = Body(...)):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     alerts = 0
+    drafts = 0
     duplicates = 0
     skipped = 0
 
@@ -57,6 +67,7 @@ async def webhook(payload: Any = Body(...)):
 
         if result.get("relevant"):
             author_name = post.get("author", {}).get("name", "")
+            emails = extract_emails(content)
 
             msg = f"""
 Full Stack Hiring Alert
@@ -75,12 +86,73 @@ Summary:
 Link: {linkedin_url}
 """
 
-            send_message(msg)
-            alerts += 1
+            if emails:
+                draft_content = generate_application_email(content, result, emails[0])
+                draft = create_application_draft(
+                    post_url=linkedin_url,
+                    hr_email=emails[0],
+                    company=result.get("company"),
+                    role=result.get("role"),
+                    subject=draft_content["subject"],
+                    body=draft_content["body"],
+                )
+                send_application_draft(draft)
+                drafts += 1
+            else:
+                send_message(msg)
+                alerts += 1
 
     return {
         "posts_received": len(posts),
         "alerts_sent": alerts,
+        "drafts_sent": drafts,
         "duplicates_skipped": duplicates,
         "empty_posts_skipped": skipped,
     }
+
+
+@app.post("/telegram-webhook")
+async def telegram_webhook(payload: Any = Body(...)):
+    callback_query = payload.get("callback_query")
+
+    if not callback_query:
+        return {"ok": True, "ignored": True}
+
+    callback_query_id = callback_query.get("id")
+    data = callback_query.get("data", "")
+
+    try:
+        action, draft_id = data.split(":", 1)
+    except ValueError:
+        if callback_query_id:
+            answer_callback(callback_query_id, "Unknown action.")
+        return {"ok": False, "error": "unknown_callback_data"}
+
+    draft = get_pending_application_draft(draft_id)
+    if not draft:
+        if callback_query_id:
+            answer_callback(callback_query_id, "Draft is no longer pending.")
+        return {"ok": True, "status": "not_pending"}
+
+    if action == "skip":
+        mark_application_skipped(draft_id)
+        if callback_query_id:
+            answer_callback(callback_query_id, "Skipped.")
+        send_message(f"Skipped application draft for {draft['role']} at {draft['company']}.")
+        return {"ok": True, "status": "skipped"}
+
+    if action == "send":
+        send_application_email(
+            to_email=draft["hr_email"],
+            subject=draft["subject"],
+            body=draft["body"],
+        )
+        mark_application_sent(draft_id)
+        if callback_query_id:
+            answer_callback(callback_query_id, "Application sent.")
+        send_message(f"Application sent to {draft['hr_email']} for {draft['role']}.")
+        return {"ok": True, "status": "sent"}
+
+    if callback_query_id:
+        answer_callback(callback_query_id, "Unknown action.")
+    return {"ok": False, "error": "unknown_action"}

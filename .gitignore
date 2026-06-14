@@ -4,7 +4,8 @@ __pycache__/
 *.py[cod]
 *.db
 *.log
+assets/*.pdf
+gmail_client_secret*.json
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-
