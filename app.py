@@ -3,7 +3,7 @@ from typing import Any
 from fastapi import Body, FastAPI, HTTPException
 
 from apify_integration import extract_posts
-from database import exists, init_db, save
+from database import claim, init_db
 from openai_filter import analyze_post
 from telegram_bot import send_message
 
@@ -33,6 +33,8 @@ async def webhook(payload: Any = Body(...)):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     alerts = 0
+    duplicates = 0
+    skipped = 0
 
     for post in posts:
         content = post.get("content", "")
@@ -44,9 +46,11 @@ async def webhook(payload: Any = Body(...)):
         )
 
         if not content:
+            skipped += 1
             continue
 
-        if exists(linkedin_url):
+        if not claim(linkedin_url):
+            duplicates += 1
             continue
 
         result = analyze_post(content)
@@ -55,21 +59,28 @@ async def webhook(payload: Any = Body(...)):
             author_name = post.get("author", {}).get("name", "")
 
             msg = f"""
-🚨 Full Stack Hiring Alert
+Full Stack Hiring Alert
 
-👤 Recruiter: {author_name}
-💼 Role: {result.get('role')}
-📍 Location: {result.get('location')}
-🏢 Company: {result.get('company')}
+Recruiter: {author_name}
+Role: {result.get('role')}
+Location: {result.get('location')}
+Company: {result.get('company')}
+Experience: {result.get('experience')}
+Matched skills: {', '.join(result.get('matched_skills', []))}
+Confidence: {result.get('confidence')}%
 
-📝 Summary:
+Summary:
 {result.get('summary')}
 
-🔗 {linkedin_url}
+Link: {linkedin_url}
 """
 
             send_message(msg)
-            save(linkedin_url)
             alerts += 1
 
-    return {"posts_received": len(posts), "alerts_sent": alerts}
+    return {
+        "posts_received": len(posts),
+        "alerts_sent": alerts,
+        "duplicates_skipped": duplicates,
+        "empty_posts_skipped": skipped,
+    }

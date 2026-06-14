@@ -48,6 +48,26 @@ def exists(url):
             return cursor.fetchone() is not None
 
 
+def claim(url):
+    if not url:
+        return False
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO jobs(post_url)
+                VALUES(%s)
+                ON CONFLICT DO NOTHING
+                RETURNING post_url
+                """,
+                (url,),
+            )
+            inserted = cursor.fetchone() is not None
+        conn.commit()
+        return inserted
+
+
 def save(url):
     if not url:
         return
