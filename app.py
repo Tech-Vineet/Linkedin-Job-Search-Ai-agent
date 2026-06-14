@@ -1,4 +1,5 @@
 from typing import Any
+import os
 
 from fastapi import Body, FastAPI, HTTPException
 
@@ -17,6 +18,8 @@ from openai_filter import analyze_post
 from telegram_bot import answer_callback, send_application_draft, send_message
 
 app = FastAPI()
+
+SEND_SCAN_SUMMARY = os.getenv("SEND_SCAN_SUMMARY", "true").lower() == "true"
 
 
 @app.on_event("startup")
@@ -45,6 +48,9 @@ async def webhook(payload: Any = Body(...)):
     drafts = 0
     duplicates = 0
     skipped = 0
+    irrelevant = 0
+    claimed = 0
+    rejection_reasons = []
 
     for post in posts:
         content = post.get("content", "")
@@ -57,13 +63,24 @@ async def webhook(payload: Any = Body(...)):
 
         if not content:
             skipped += 1
+            print("Skipped empty post content.", flush=True)
             continue
 
         if not claim(linkedin_url):
             duplicates += 1
+            print(f"Skipped duplicate post: {linkedin_url}", flush=True)
             continue
 
+        claimed += 1
         result = analyze_post(content)
+        print(
+            "Analyzed post: "
+            f"relevant={result.get('relevant')} "
+            f"role={result.get('role')} "
+            f"confidence={result.get('confidence')} "
+            f"url={linkedin_url}",
+            flush=True,
+        )
 
         if result.get("relevant"):
             author_name = post.get("author", {}).get("name", "")
@@ -101,13 +118,43 @@ Link: {linkedin_url}
             else:
                 send_message(msg)
                 alerts += 1
+        else:
+            irrelevant += 1
+            reason = result.get("rejection_reason") or "No reason returned."
+            if len(rejection_reasons) < 5:
+                rejection_reasons.append(reason)
+            print(f"Rejected post: {reason}", flush=True)
+
+    if SEND_SCAN_SUMMARY and not alerts and not drafts:
+        reason_text = "\n".join(f"- {reason}" for reason in rejection_reasons)
+        if not reason_text:
+            reason_text = "- No new relevant posts found."
+
+        send_message(
+            f"""
+Job scan complete
+
+Posts received: {len(posts)}
+New posts analyzed: {claimed}
+Relevant alerts: {alerts}
+Application drafts: {drafts}
+Duplicates skipped: {duplicates}
+Empty posts skipped: {skipped}
+Irrelevant posts: {irrelevant}
+
+Sample rejection reasons:
+{reason_text}
+"""
+        )
 
     return {
         "posts_received": len(posts),
+        "new_posts_analyzed": claimed,
         "alerts_sent": alerts,
         "drafts_sent": drafts,
         "duplicates_skipped": duplicates,
         "empty_posts_skipped": skipped,
+        "irrelevant_posts": irrelevant,
     }
 
 

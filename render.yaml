@@ -37,3 +37,5 @@ services:
         sync: false
       - key: CANDIDATE_PHONE
         sync: false
+      - key: SEND_SCAN_SUMMARY
+        value: "true"

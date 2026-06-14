@@ -8,6 +8,9 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 def _post(method, payload):
+    if not BOT_TOKEN:
+        raise RuntimeError("TELEGRAM_BOT_TOKEN is missing.")
+
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
     if method != "sendMessage":
@@ -18,11 +21,19 @@ def _post(method, payload):
         json=payload,
         timeout=30,
     )
+    response.raise_for_status()
 
-    return response.json()
+    data = response.json()
+    if not data.get("ok"):
+        raise RuntimeError(f"Telegram API error: {data}")
+
+    return data
 
 
 def send_message(text):
+    if not CHAT_ID:
+        raise RuntimeError("TELEGRAM_CHAT_ID is missing.")
+
     return _post(
         "sendMessage",
         {
