@@ -13,16 +13,75 @@ load_dotenv()
 GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
 
 
-def _load_resume():
-    resume_path = Path(os.getenv("RESUME_PATH", "assets/resume.pdf"))
-    resume_base64 = os.getenv("RESUME_BASE64")
-    resume_filename = os.getenv("RESUME_FILENAME", resume_path.name)
+def _looks_like_pdf(file_bytes):
+    return file_bytes.lstrip().startswith(b"%PDF-")
 
-    if resume_base64:
-        return base64.b64decode(resume_base64), resume_filename
+
+def _default_resume_path():
+    configured_value = os.getenv("RESUME_PATH") or "assets/resume.pdf"
+    configured_path = Path(configured_value)
+    if configured_path.exists():
+        return configured_path
+
+    if not os.getenv("RESUME_PATH"):
+        pdf_files = sorted(Path("assets").glob("*.pdf"))
+        if len(pdf_files) == 1:
+            return pdf_files[0]
+
+    return configured_path
+
+
+def _decode_resume_base64(resume_base64):
+    value = resume_base64.strip()
+    if "," in value and value.lower().startswith("data:"):
+        value = value.split(",", 1)[1]
+
+    compact_value = "".join(value.split())
+    return base64.b64decode(compact_value, validate=True)
+
+
+def _load_resume_base64_file():
+    configured_path = os.getenv("RESUME_BASE64_FILE")
+    candidate_paths = []
+
+    if configured_path:
+        candidate_paths.append(Path(configured_path))
+    else:
+        candidate_paths.append(Path("/etc/secrets/resume_base64.txt"))
+
+    for path in candidate_paths:
+        if path.exists():
+            return path.read_text(encoding="utf-8")
+
+    if configured_path:
+        raise RuntimeError(f"Resume base64 file not found: {configured_path}")
+
+    return None
+
+
+def _load_resume():
+    resume_path = _default_resume_path()
+    resume_base64 = os.getenv("RESUME_BASE64")
+    resume_base64_file = _load_resume_base64_file()
+    resume_filename = os.getenv("RESUME_FILENAME") or resume_path.name
+
+    if resume_base64 or resume_base64_file:
+        try:
+            resume_bytes = _decode_resume_base64(resume_base64 or resume_base64_file)
+        except (ValueError, base64.binascii.Error) as exc:
+            raise RuntimeError("Resume base64 data is not valid base64 PDF data.") from exc
+
+        if not _looks_like_pdf(resume_bytes):
+            raise RuntimeError("Resume base64 data decoded successfully, but it is not a valid PDF.")
+
+        return resume_bytes, resume_filename
 
     if resume_path.exists():
-        return resume_path.read_bytes(), resume_path.name
+        resume_bytes = resume_path.read_bytes()
+        if not _looks_like_pdf(resume_bytes):
+            raise RuntimeError(f"Resume file is not a valid PDF: {resume_path}")
+
+        return resume_bytes, resume_path.name
 
     raise RuntimeError(f"Resume file not found: {resume_path}")
 

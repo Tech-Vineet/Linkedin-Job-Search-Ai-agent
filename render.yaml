@@ -21,6 +21,8 @@ services:
         sync: false
       - key: RESUME_BASE64
         sync: false
+      - key: RESUME_BASE64_FILE
+        value: /etc/secrets/resume_base64.txt
       - key: RESUME_FILENAME
         sync: false
       - key: GMAIL_CLIENT_ID

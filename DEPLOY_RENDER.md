@@ -46,6 +46,31 @@ Use either `RESUME_PATH` when the PDF exists on the server, or `RESUME_BASE64`
 when storing the PDF as an environment variable. For Render, `RESUME_BASE64`
 is usually safer than committing a personal resume.
 
+If Render fails during build with `exec /bin/bash: argument list too long`,
+remove `RESUME_BASE64` from Environment Variables and use a Secret File instead.
+Long environment values can stop the build shell before Python starts.
+
+To generate the secret file contents from PowerShell:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("assets/Vineet_Full_Stack.pdf"))
+```
+
+In Render:
+
+1. Open your service.
+2. Go to **Environment**.
+3. Delete the `RESUME_BASE64` environment variable if you added it.
+4. Under **Secret Files**, click **Add Secret File**.
+5. Set the filename to `resume_base64.txt`.
+6. Paste the full PowerShell output as the file contents.
+7. Set `RESUME_BASE64_FILE` to `/etc/secrets/resume_base64.txt`.
+8. Set `RESUME_FILENAME` to:
+
+```text
+Vineet_Full_Stack.pdf
+```
+
 ## Gmail API setup
 
 1. Create a Google Cloud project.

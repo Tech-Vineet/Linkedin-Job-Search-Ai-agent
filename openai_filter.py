@@ -92,6 +92,7 @@ Mark relevant=true only when all of these are true:
 5. Prefer Noida/NCR/Delhi NCR/Gurugram/Ghaziabad/Faridabad/remote-in-India roles. Reject clearly unrelated locations unless remote is allowed.
 6. The post mentions at least one target skill, or the role clearly implies MERN/full-stack JavaScript work.
 7. Reject low-intent engagement posts that only say to comment "Interested", "comment for details", "drop your resume", or similar, unless they also include a clear apply link, email address, company, recruiter, or concrete job details.
+8. Reject QA, manual testing, automation testing, software testing, SDET, support, trainer, faculty, and non-developer internships unless the main role is clearly Full Stack/MERN/React/Node developer work.
 
 When relevant=false, set confidence below 50 and explain the main reason in rejection_reason.
 When relevant=true, summarize why it matches in one short sentence.

@@ -12,7 +12,7 @@ from database import (
     mark_application_sent,
     mark_application_skipped,
 )
-from email_drafter import extract_emails, generate_application_email
+from email_drafter import extract_post_emails, generate_application_email
 from email_sender import send_application_email
 from openai_filter import analyze_post
 from telegram_bot import answer_callback, send_application_draft, send_message
@@ -84,7 +84,11 @@ async def webhook(payload: Any = Body(...)):
 
         if result.get("relevant"):
             author_name = post.get("author", {}).get("name", "")
-            emails = extract_emails(content)
+            emails = extract_post_emails(post)
+            print(
+                f"Relevant post email count={len(emails)} url={linkedin_url}",
+                flush=True,
+            )
 
             msg = f"""
 Full Stack Hiring Alert
@@ -116,6 +120,7 @@ Link: {linkedin_url}
                 send_application_draft(draft)
                 drafts += 1
             else:
+                print(f"No email found; sending alert only: {linkedin_url}", flush=True)
                 send_message(msg)
                 alerts += 1
         else:

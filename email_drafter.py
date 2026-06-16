@@ -41,6 +41,18 @@ def extract_emails(text):
     return emails
 
 
+def extract_post_emails(post):
+    email_sources = [post.get("content", "")]
+
+    for attribute in post.get("contentAttributes", []) or []:
+        for key in ("textLink", "hyperlink"):
+            value = attribute.get(key)
+            if value:
+                email_sources.append(value.replace("mailto:", ""))
+
+    return extract_emails("\n".join(email_sources))
+
+
 def generate_application_email(post_text, analysis, hr_email):
     candidate_name = os.getenv("CANDIDATE_NAME", "Vineet")
     candidate_email = os.getenv("CANDIDATE_EMAIL", "")
